@@ -128,6 +128,25 @@ def update_scenario(scenario_id: str, fields: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
+def create_scenario(fields: dict[str, Any]) -> dict[str, Any]:
+    """新規シナリオを作成する。
+
+    必須: name (短い名前 / 識別子)。それ以外は全て省略可で、
+    省略した場合はサーバ側のデフォルト値が入る (focus_block_template='', role_assignment='none',
+    ui_panels.chat_input=true 等の最小構成)。
+
+    実用的には類似シナリオを `get_scenario(...)` で取得 → 必要箇所を変更 →
+    その辞書を fields として渡す、または `duplicate_scenario` を使うのが楽。
+    完全にゼロから作る場合のみこのツール。
+
+    重要: 呼ぶ前にユーザーに作成する内容を要約して提示し、承認を取ること。
+    """
+    if not fields.get("name"):
+        raise RuntimeError("create_scenario: 'name' フィールドは必須です")
+    return _request("POST", "/ai-npc/scenarios/", json=fields)
+
+
+@mcp.tool()
 def duplicate_scenario(scenario_id: str) -> dict[str, Any]:
     """シナリオを現在のユーザー所有の private コピーとして複製する。
     元のシナリオは変更されない。複製版の name には ' (コピー)' が付与される。
@@ -176,6 +195,66 @@ def rollback_scenario(
         f"/ai-npc/scenarios/{scenario_id}/rollback/",
         json={"content_version": content_version, "note": note},
     )
+
+
+# ────────────────────────────────────────────────────────────
+# Personality tools
+# ────────────────────────────────────────────────────────────
+
+@mcp.tool()
+def list_personalities() -> list[dict[str, Any]]:
+    """利用可能な Personality (NPC の人格定義) の一覧を返す。
+
+    各要素には id / name / description / voice / character_id /
+    character_label / thumbnail_url / is_owner / is_public / updated_at
+    が含まれる (system_prompt は含まれない、軽量版)。
+    詳細は `get_personality(id)` を呼ぶ。
+    """
+    data = _request("GET", "/ai-npc/personalities/")
+    return data.get("results", []) if isinstance(data, dict) else []
+
+
+@mcp.tool()
+def get_personality(personality_id: str) -> dict[str, Any]:
+    """指定 ID の Personality の全フィールド (system_prompt / voice /
+    character_id / model / temperature / turn_detection / tools 等) を返す。
+    """
+    return _request("GET", f"/ai-npc/personalities/{personality_id}/")
+
+
+@mcp.tool()
+def create_personality(fields: dict[str, Any]) -> dict[str, Any]:
+    """新規 Personality を作成する。
+
+    必須フィールド: name, system_prompt, character_id (server-side で choices 制約あり)。
+    推奨指定: voice (例: "sage", "marin", "cedar" 等)、model (例: "gpt-realtime")、
+    description (Web 管理用の説明文)。
+
+    character_id / voice / model の有効値は `/ai-npc/personalities/choices/`
+    で取れるが、現状の MCP では choices ツールを露出していないので、
+    既存 Personality を `list_personalities` + `get_personality` で参照して
+    どんな値が使われているか見ながら指定するのが確実。
+
+    重要: 呼ぶ前にユーザーに作成する内容を要約して提示し、承認を取ること。
+    特に system_prompt は NPC の人格を決定するため、提示せずに作らない。
+    """
+    for required in ("name", "system_prompt", "character_id"):
+        if not fields.get(required):
+            raise RuntimeError(f"create_personality: '{required}' フィールドは必須です")
+    return _request("POST", "/ai-npc/personalities/", json=fields)
+
+
+@mcp.tool()
+def update_personality(personality_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """Personality を部分更新する (PATCH 相当)。
+
+    変更したいフィールドのみ含めればよい。例えば system_prompt だけ書き換えたいなら
+    `{"system_prompt": "..."}` を渡す。
+
+    重要: 呼ぶ前に必ずユーザーに変更内容の diff を提示して承認を取ること。
+    Personality の編集は NPC の人格全体に影響するので慎重に。
+    """
+    return _request("PATCH", f"/ai-npc/personalities/{personality_id}/", json=fields)
 
 
 # ────────────────────────────────────────────────────────────

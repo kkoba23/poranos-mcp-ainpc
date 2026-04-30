@@ -66,3 +66,37 @@ def test_list_conversation_logs():
     print(f"\n  ✓ {len(logs)} conversation log(s)")
     if logs:
         print(f"    most recent: {logs[0].get('client_session_id')}")
+
+
+def test_list_personalities():
+    from poranos_mcp_ainpc.server import list_personalities, get_personality
+
+    personalities = list_personalities()
+    assert isinstance(personalities, list)
+    print(f"\n  ✓ {len(personalities)} personalit(ies)")
+    if personalities:
+        target = personalities[0]
+        print(f"    first: {target.get('name')} ({target.get('character_id')})")
+        # detail fetch
+        detail = get_personality(target["id"])
+        assert "system_prompt" in detail
+        sp_len = len(detail.get("system_prompt") or "")
+        print(f"    system_prompt length: {sp_len}")
+
+
+def test_create_scenario_round_trip():
+    """create_scenario → 即削除はせずに残してしまうので、minimum で smoke のみ。
+    実 DB を汚さないため自動 cleanup する。"""
+    from poranos_mcp_ainpc.server import _request
+
+    # 最小フィールド (name のみ) で作成
+    created = _request("POST", "/ai-npc/scenarios/", json={
+        "name": "MCP smoke test (auto-cleanup)",
+        "description": "smoke test",
+    })
+    sid = created["id"]
+    print(f"\n  ✓ created scenario {sid[:8]}... v{created['content_version']}")
+    assert created["name"] == "MCP smoke test (auto-cleanup)"
+    # 即削除
+    _request("DELETE", f"/ai-npc/scenarios/{sid}/")
+    print(f"    cleaned up.")

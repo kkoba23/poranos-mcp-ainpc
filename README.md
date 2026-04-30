@@ -100,11 +100,21 @@ poranos-mcp-ainpc
 |---|---|
 | `list_scenarios()` | シナリオ一覧 |
 | `get_scenario(scenario_id)` | シナリオ詳細 (focus_block_template / role_addendums 等を含む) |
+| `create_scenario(fields)` | 新規シナリオ作成 (name 必須、他はサーバ既定値) |
 | `update_scenario(scenario_id, fields)` | シナリオを部分更新 (PATCH) |
 | `duplicate_scenario(scenario_id)` | シナリオを private コピーとして複製 |
 | `get_scenario_versions(scenario_id)` | 編集履歴 (meta のみ) |
 | `get_scenario_version(scenario_id, content_version)` | 特定版の snapshot |
 | `rollback_scenario(scenario_id, content_version, note?)` | 過去版に戻す |
+
+### Personality 系
+
+| Tool | 用途 |
+|---|---|
+| `list_personalities()` | NPC 人格 (Personality) 一覧 |
+| `get_personality(personality_id)` | 人格詳細 (system_prompt / voice / character_id 等) |
+| `create_personality(fields)` | 新規人格作成 (name / system_prompt / character_id 必須) |
+| `update_personality(personality_id, fields)` | 人格を部分更新 |
 
 ### ConversationLog 系
 
