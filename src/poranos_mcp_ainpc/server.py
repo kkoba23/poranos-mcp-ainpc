@@ -301,6 +301,87 @@ def get_conversation_log(log_id: str) -> dict[str, Any]:
 
 
 # ────────────────────────────────────────────────────────────
+# Knowledge (DB 上の動的なナレッジベース)
+# ────────────────────────────────────────────────────────────
+
+@mcp.tool()
+def list_knowledge_articles(tags: str | None = None) -> list[dict[str, Any]]:
+    """サーバ上のナレッジ記事一覧を返す (本文は含まず summary のみ)。
+
+    Args:
+        tags: カンマ区切りの tag (例: "scenario,pitfall") を指定すると AND マッチで絞り込む。
+
+    各要素には id / title / summary / tags / content_length / is_owner /
+    is_public / updated_at が含まれる。詳細は `get_knowledge_article(id)` を呼ぶ。
+    """
+    params = {}
+    if tags:
+        params['tags'] = tags
+    data = _request("GET", "/ai-npc/knowledge/", params=params)
+    return data.get("results", []) if isinstance(data, dict) else []
+
+
+@mcp.tool()
+def get_knowledge_article(article_id: str) -> dict[str, Any]:
+    """指定 ID のナレッジ記事の本文 (Markdown) を含む全フィールドを返す。"""
+    return _request("GET", f"/ai-npc/knowledge/{article_id}/")
+
+
+@mcp.tool()
+def search_knowledge_articles(
+    q: str = "", tags: str | None = None
+) -> list[dict[str, Any]]:
+    """ナレッジ記事をキーワード検索する (title / summary / content / tags 横断)。
+
+    Args:
+        q: スペース区切りの検索 term。全 term が AND マッチした記事のみ返す
+            (例: "シナリオ 禁止フレーズ")。
+        tags: カンマ区切りの tag (例: "scenario,pitfall") を併用可能。
+
+    レスポンスは `list_knowledge_articles` と同形式 (本文は含まず)。
+    具体的な記事の中身は `get_knowledge_article(id)` で取得すること。
+
+    シナリオを書く前 / 編集する前に、関連 term で検索して既存ナレッジを
+    確認するのが推奨運用。
+    """
+    params = {"q": q}
+    if tags:
+        params["tags"] = tags
+    data = _request("GET", "/ai-npc/knowledge/search/", params=params)
+    return data.get("results", []) if isinstance(data, dict) else []
+
+
+@mcp.tool()
+def create_knowledge_article(fields: dict[str, Any]) -> dict[str, Any]:
+    """新しいナレッジ記事を作成する。
+
+    必須フィールド: title, content (Markdown 本文)。
+    推奨指定: summary (1-2 文の要約)、tags (検索性向上のため)、is_public
+    (他ユーザーにも見せるか)。
+
+    重要: 呼ぶ前にユーザーに作成内容 (title / 短い summary / tags) を要約して
+    提示し、承認を取ること。ナレッジは他の運用担当の意思決定に影響するため、
+    根拠が曖昧な内容を勝手に保存しない。
+    """
+    if not fields.get("title"):
+        raise RuntimeError("create_knowledge_article: 'title' フィールドは必須です")
+    if not fields.get("content"):
+        raise RuntimeError("create_knowledge_article: 'content' フィールドは必須です")
+    return _request("POST", "/ai-npc/knowledge/", json=fields)
+
+
+@mcp.tool()
+def update_knowledge_article(article_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """ナレッジ記事を部分更新する (PATCH 相当)。
+
+    変更したいフィールドのみ含める (title / summary / content / tags / is_public)。
+
+    重要: 呼ぶ前にユーザーに変更内容を提示して承認を取ること。
+    """
+    return _request("PATCH", f"/ai-npc/knowledge/{article_id}/", json=fields)
+
+
+# ────────────────────────────────────────────────────────────
 # MCP Resources (静的な参考資料)
 # ────────────────────────────────────────────────────────────
 
@@ -362,9 +443,13 @@ def analyze_log(scenario_id: str, log_id: str) -> str:
 
 # 必読 (照合の前に)
 
-`poranos://prompt-authoring-lessons` resource を読んで、Realtime モデルの
-素の癖と典型的なプロンプト違反パターンを把握しておくこと
-(または `get_prompt_authoring_lessons()` ツールでも取得可能)。
+`search_knowledge_articles(q="禁止フレーズ 落とし穴", tags="scenario,pitfalls")`
+等で関連ナレッジを検索し、見つかった記事を `get_knowledge_article(id)` で読んで
+Realtime モデルの素の癖と典型的なプロンプト違反パターンを把握しておくこと。
+(タグ "scenario", "prompt-authoring", "pitfalls" あたりが拾えるはず)
+
+サーバ DB のナレッジが空の場合は、bundled fallback の resource
+`poranos://prompt-authoring-lessons` を読んでもよい。
 
 # 手順
 
@@ -404,9 +489,10 @@ def propose_edit(scenario_id: str, feedback: str) -> str:
 
 # 必読 (編集案を作る前に)
 
-`poranos://prompt-authoring-lessons` resource を読んで、Realtime モデルへの
-プロンプト指示で「効く / 効かない」の知見を把握しておくこと
-(または `get_prompt_authoring_lessons()` ツールで取得可能)。
+`search_knowledge_articles(q="禁止フレーズ role_addendums", tags="scenario,prompt-authoring")`
+等で関連ナレッジを検索し、見つかった記事を `get_knowledge_article(id)` で読んで
+Realtime モデルへのプロンプト指示で「効く / 効かない」の知見を把握すること。
+
 特に以下は事故が多いので必ず確認:
 - focus_block_template の禁止フレーズは Sub にも届くよう role_addendums.supplementary
   にも複製する必要がある (Sub には focus_block_template が渡らない)
@@ -472,14 +558,14 @@ def create_scenario_guide(intent: str) -> str:
 
 # 必読 (書き始める前に)
 
-`poranos://prompt-authoring-lessons` resource を読んでください
-(または `get_prompt_authoring_lessons()` ツールで取得可能)。
+`search_knowledge_articles(q="シナリオ 作成 落とし穴", tags="scenario,prompt-authoring")`
+等で関連ナレッジを検索し、見つかった記事を `get_knowledge_article(id)` で読んでください。
 これは過去のチューニングで蓄積した「Realtime モデルの素の癖」「効くテクニック /
 効かないアンチパターン」の知見集で、これを読まずに書くと同じ失敗を繰り返します。
 
 # 手順
 
-1. **lessons resource を読む** (上記)
+1. **関連ナレッジを検索 + 読む** (上記)
 2. `list_scenarios()` で既存シナリオを把握
 3. 意図に近い既存シナリオがあれば `get_scenario(...)` で構造を参考にする
 4. 新規 scenario の **構成案を箇条書きで提示**:
@@ -505,6 +591,14 @@ def create_scenario_guide(intent: str) -> str:
   - 「次の○○」「ちょっと待って」等の遷移予告禁止
   - 1 役 1 ターンを守らせる強い指示
 - **必ず diff/構成を見せて承認を取る**: 勝手に作成しない
+
+# 学びをナレッジに残す
+
+シナリオを作る過程で「これは知見だ」と思った発見 (例: 特定フィールドの組合せが
+効く / 効かない、新しい禁止フレーズ、Realtime モデルの新しい癖など) があれば、
+ユーザーに「これをナレッジに残しますか?」と提案してください。承認されたら
+`create_knowledge_article` で記事化 (適切な title / summary / tags 付き)。
+これで他の運用担当 / 別セッションの Claude も恩恵を受けられます。
 """
 
 
