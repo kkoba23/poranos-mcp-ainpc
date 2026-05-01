@@ -129,8 +129,20 @@ poranos-mcp-ainpc
 |---|---|
 | `analyze_log(scenario_id, log_id)` | ログを scenario と照合して違反を抽出 |
 | `propose_edit(scenario_id, feedback)` | 自然言語フィードバックから編集案を提案 → 承認 → 反映 |
+| `create_scenario_guide(intent)` | 新規シナリオを「執筆ガイドを踏まえて」作成 |
 
 これらは Claude Desktop の `/` メニュー (slash commands) から呼び出せる。
+全ての prompt は処理開始前に **prompt 執筆ガイド** (下記 Resource) を読むよう Claude に指示する。
+
+## 提供される MCP Resources (静的参考資料)
+
+| URI | 内容 |
+|---|---|
+| `poranos://prompt-authoring-lessons` | Scenario の `focus_block_template` / `role_addendums` 等を書くときの実践ガイド (Markdown)。Realtime モデルの素の癖、典型的な落とし穴、効くテクニックを集約 |
+
+ツール経由でも同じ内容を取得可能 (`get_prompt_authoring_lessons()`)。
+Claude Desktop の UI から直接閲覧 / コンテキスト添付できる他、prompt の指示で
+内部的に `resources/read` 経由で読む。
 
 ## 典型的な使い方
 

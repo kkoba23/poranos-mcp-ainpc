@@ -23,6 +23,7 @@ Claude Desktop 設定例:
 
 from __future__ import annotations
 
+import importlib.resources
 import os
 import sys
 from typing import Any
@@ -300,6 +301,51 @@ def get_conversation_log(log_id: str) -> dict[str, Any]:
 
 
 # ────────────────────────────────────────────────────────────
+# MCP Resources (静的な参考資料)
+# ────────────────────────────────────────────────────────────
+
+# Scenario の prompt 執筆ガイドを bundle 配信。
+# canonical 版は Poranos_AiNpc/docs/prompt_authoring_lessons.md (private repo)。
+# MCP package には同期されたコピーを置き、PyPI 経由で全ユーザーに配布する。
+# 更新時は MCP version bump + republish が必要 (現状の運用前提)。
+_PROMPT_AUTHORING_LESSONS = (
+    importlib.resources.files("poranos_mcp_ainpc.data")
+    .joinpath("prompt_authoring_lessons.md")
+    .read_text(encoding="utf-8")
+)
+
+
+@mcp.resource(
+    "poranos://prompt-authoring-lessons",
+    name="prompt_authoring_lessons",
+    description=(
+        "Scenario の focus_block_template / role_addendums / "
+        "tool_descriptions_override を書くときの実践ガイド。"
+        "Pattern A (Library Tour) を Scenario 化する過程で蓄積した "
+        "「こう書いても言う通りにならない / こう書くと効く」の知見集。"
+        "新規 scenario の create / 既存 scenario の編集を行う前に必ず読むこと。"
+    ),
+    mime_type="text/markdown",
+)
+def prompt_authoring_lessons() -> str:
+    """Markdown 形式のプロンプト執筆ガイド全文を返す。"""
+    return _PROMPT_AUTHORING_LESSONS
+
+
+# Tool wrapper も同時に提供 (LLM クライアントによっては resources/list を
+# 自動で見ない場合があるため、tool 経由でも取れるように)。
+@mcp.tool()
+def get_prompt_authoring_lessons() -> str:
+    """Scenario 編集前に読むべきプロンプト執筆ガイドを取得する。
+
+    内容は resource `poranos://prompt-authoring-lessons` と同一。
+    新規 scenario 作成 / 既存 scenario の prompt 編集をする前に必ず読み、
+    典型的な落とし穴 (冒頭の相槌、遷移予告、Sub の事実列挙など) を把握すること。
+    """
+    return _PROMPT_AUTHORING_LESSONS
+
+
+# ────────────────────────────────────────────────────────────
 # MCP Prompts (定型ワークフロー)
 # ────────────────────────────────────────────────────────────
 
@@ -313,6 +359,12 @@ def analyze_log(scenario_id: str, log_id: str) -> str:
 # 入力
 - scenario_id: {scenario_id}
 - log_id: {log_id}
+
+# 必読 (照合の前に)
+
+`poranos://prompt-authoring-lessons` resource を読んで、Realtime モデルの
+素の癖と典型的なプロンプト違反パターンを把握しておくこと
+(または `get_prompt_authoring_lessons()` ツールでも取得可能)。
 
 # 手順
 
@@ -333,7 +385,7 @@ def analyze_log(scenario_id: str, log_id: str) -> str:
 4. 各違反について:
    - 該当発話の時刻と話者
    - 違反の根拠 (scenario のどのルールに反するか引用)
-   - 修正案 (どのフィールドをどう変えれば防げるか)
+   - 修正案 (どのフィールドをどう変えれば防げるか — lessons の「効くテクニック」を踏まえる)
 
 5. **編集はまだ実行しない**。報告のみで、ユーザーが「直して」と言ったら
    `propose_edit` プロンプトの流れに移る。
@@ -349,6 +401,17 @@ def propose_edit(scenario_id: str, feedback: str) -> str:
 
 # フィードバック
 {feedback}
+
+# 必読 (編集案を作る前に)
+
+`poranos://prompt-authoring-lessons` resource を読んで、Realtime モデルへの
+プロンプト指示で「効く / 効かない」の知見を把握しておくこと
+(または `get_prompt_authoring_lessons()` ツールで取得可能)。
+特に以下は事故が多いので必ず確認:
+- focus_block_template の禁止フレーズは Sub にも届くよう role_addendums.supplementary
+  にも複製する必要がある (Sub には focus_block_template が渡らない)
+- 「次の○○」のような遷移予告フレーズは具体例つきで強く禁止する必要あり
+- 1 展示 1 発話などの数量制約はターン番号で例示する
 
 # 手順
 
@@ -392,6 +455,56 @@ def propose_edit(scenario_id: str, feedback: str) -> str:
 - 元のスタイル (関西弁、絵文字なし、Bullet 形式等) は維持する
 - 変更前後の対比を明確に提示
 - 承認なしに `update_scenario` を呼ばない
+"""
+
+
+@mcp.prompt()
+def create_scenario_guide(intent: str) -> str:
+    """新規シナリオを「執筆ガイドを踏まえて」作成するワークフロー。
+
+    intent には作りたいシナリオの意図を自然言語で渡す
+    (例: 「英語で複数の NPC が陽気に雑談するシナリオ」)。
+    """
+    return f"""新規 scenario を作成してください。
+
+# 意図
+{intent}
+
+# 必読 (書き始める前に)
+
+`poranos://prompt-authoring-lessons` resource を読んでください
+(または `get_prompt_authoring_lessons()` ツールで取得可能)。
+これは過去のチューニングで蓄積した「Realtime モデルの素の癖」「効くテクニック /
+効かないアンチパターン」の知見集で、これを読まずに書くと同じ失敗を繰り返します。
+
+# 手順
+
+1. **lessons resource を読む** (上記)
+2. `list_scenarios()` で既存シナリオを把握
+3. 意図に近い既存シナリオがあれば `get_scenario(...)` で構造を参考にする
+4. 新規 scenario の **構成案を箇条書きで提示**:
+   - cast_slots (slot 数 / preset_role / receives_mic_audio)
+   - role_assignment (fixed / llm_decide / none)
+   - enabled_tools
+   - focus_block_template (or null)
+   - role_addendums (各 role の指示)
+   - response_format_rules
+   - ui_panels (library / shared_screen / chat_input 等)
+   - opening_kickoff (wait_for_user / npc_greets_first / guide_on_library_pick)
+5. 構成案でユーザーの **承認を得る**
+6. 承認後、`create_scenario(fields={{...}})` で作成
+7. 作成後 `get_scenario_versions` で v1 が edit_source='mcp' で記録されたか確認
+8. 推奨: 必要な Personality (NPC 人格) も `list_personalities` で既存確認 → 不足なら
+   `create_personality` で新規作成 (system_prompt の作成にも lessons の知見を適用)
+
+# 注意
+
+- **ゼロから書かない**: 似た既存シナリオがあれば `duplicate_scenario` → `update_scenario` の方が安全
+- **lessons の禁則を破らない**: 特に
+  - focus_block_template と role_addendums の役割分担 (Sub には focus 届かない)
+  - 「次の○○」「ちょっと待って」等の遷移予告禁止
+  - 1 役 1 ターンを守らせる強い指示
+- **必ず diff/構成を見せて承認を取る**: 勝手に作成しない
 """
 
 
