@@ -1,5 +1,7 @@
 # poranos-mcp-ainpc
 
+[![PyPI](https://img.shields.io/pypi/v/poranos-mcp-ainpc.svg)](https://pypi.org/project/poranos-mcp-ainpc/)
+
 Claude Desktop / Claude Code から **Poranos AI NPC** のシナリオ・会話ログを操作するための MCP (Model Context Protocol) サーバ。
 
 非エンジニアの運用担当が会話ログを読みながら自然言語で「Sub が冒頭で『なるほど』と言ってる、修正して」と Claude に伝えれば、Claude が必要なツールを呼び出してシナリオの prompt を編集する — というワークフローを実現する。
@@ -51,11 +53,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
   "mcpServers": {
     "poranos-ainpc": {
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/kkoba23/poranos-mcp-ainpc.git",
-        "poranos-mcp-ainpc"
-      ],
+      "args": ["poranos-mcp-ainpc"],
       "env": {
         "PORANOS_API_KEY": "pk_あなたのキー"
       }
@@ -66,14 +64,16 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 設定を保存したら Claude Desktop を再起動。
 
-> **メモ**: 初回起動時に `uvx` が自動でリポジトリを clone + 依存解決するため少し時間がかかります (10-30 秒程度)。2 回目以降はキャッシュされます。
+> **メモ**: 初回起動時に `uvx` が PyPI からパッケージを fetch するため少し時間がかかります (5-15 秒)。2 回目以降はキャッシュされます。
+>
+> Windows で `command: "uvx"` が見つからないと言われる場合は、`uvx` のフルパス (例: `C:\\Users\\<user>\\.local\\bin\\uvx.exe`) を指定してください。
 
 ### Claude Code で使う場合
 
 ```bash
 claude mcp add poranos-ainpc \
   -e PORANOS_API_KEY=pk_あなたのキー \
-  -- uvx --from git+https://github.com/kkoba23/poranos-mcp-ainpc.git poranos-mcp-ainpc
+  -- uvx poranos-mcp-ainpc
 ```
 
 #### ローカル開発
