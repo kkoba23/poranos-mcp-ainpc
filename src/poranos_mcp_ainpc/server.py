@@ -228,8 +228,19 @@ def create_personality(fields: dict[str, Any]) -> dict[str, Any]:
     """新規 Personality を作成する。
 
     必須フィールド: name, system_prompt, character_id (server-side で choices 制約あり)。
-    推奨指定: voice (例: "sage", "marin", "cedar" 等)、model (例: "gpt-realtime")、
-    description (Web 管理用の説明文)。
+    任意指定: voice / model / provider / description / temperature / turn_detection / tools。
+
+    **model は省略推奨**。省略時はサーバ側 default の `gpt-realtime-mini` (低コスト・
+    低レイテンシ) が適用される。明示する場合の例:
+    - OpenAI Realtime: `gpt-realtime-mini` (推奨), `gpt-realtime` (高品質・高コスト)
+    - Azure Voice Live (provider=azure_voice_live のみ): `gpt-4o-mini` (推奨), `gpt-4.1`, `gpt-5` 等
+
+    **voice は省略推奨**。省略時は OpenAI 用の `sage`。Azure provider を使う場合は
+    `ja-JP-NanamiNeural` 等の Azure 形式 voice 名が必要 (provider/voice 不整合は
+    serializer で reject される)。
+
+    **provider は省略推奨**。省略時は `openai_realtime`。Azure を使う場合のみ
+    `azure_voice_live` を指定。
 
     character_id / voice / model の有効値は `/ai-npc/personalities/choices/`
     で取れるが、現状の MCP では choices ツールを露出していないので、
